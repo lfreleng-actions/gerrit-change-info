@@ -1,0 +1,113 @@
+---
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2025 The Linux Foundation
+
+name: "️Gerrit change request info"
+description: "Returns a Gerrit change URL as required inputs that are used within releng reusable workflows"
+
+inputs:
+  gerrit_url:
+    description: "Gerrit Change URL"
+    required: true
+  patchset_number:
+    description: "Patchset Number (optional)"
+    required: false
+  ssh_user_name:
+    description: "SSH Username"
+    required: true
+    type: string
+    default: ${{ vars.GERRIT_SSH_USER }}
+  ssh_private_key:
+    description: 'SSH Private Key'
+    required: true
+    type: string
+    default: ${{ secrets.GERRIT_SSH_KEY }}
+
+outputs:
+  gerrit_branch:
+    description: "Description of output"
+    gerrit_branch: ${{ steps.gerrit.outputs.GERRIT_BRANCH }}
+  gerrit_change_id:
+    description: "Description of output"
+    gerrit_change_id: ${{ steps.gerrit.outputs.GERRIT_CHANGE_ID }}
+  gerrit_change_id:
+    description: "Description of output"
+    gerrit_patchset_number: ${{ steps.gerrit.outputs.GERRIT_PATCHSET_NUMBER }}
+  gerrit_change_url:
+    description: "Description of output"
+    gerrit_change_url: ${{ steps.gerrit.outputs.GERRIT_CHANGE_URL }}
+  gerrit_change_number:
+    description: "Description of output"
+    gerrit_change_number: ${{ steps.gerrit.outputs.GERRIT_CHANGE_NUMBER }}
+  gerrit_event_type:
+    description: "Description of output"
+    gerrit_event_type: ${{ steps.gerrit.outputs.GERRIT_EVENT_TYPE }}
+  gerrit_patchset_number:
+    description: "Description of output"
+    gerrit_patchset_number: ${{ steps.gerrit.outputs.GERRIT_PATCHSET_NUMBER }}
+  gerrit_patchset_revision:
+    description: "Description of output"
+    gerrit_patchset_revision: ${{ steps.gerrit.outputs.GERRIT_PATCHSET_REVISION }}
+  gerrit_project:
+    description: "Description of output"
+    gerrit_project: ${{ steps.gerrit.outputs.GERRIT_PROJECT }}
+  gerrit_refspec:
+    description: "Description of output"
+    gerrit_refspec: ${{ steps.gerrit.outputs.GERRIT_REFSPEC }}
+  gerrit_hostname:
+    description: "Description of output"
+    gerrit_hostname: ${{ steps.gerrit.outputs.GERRIT_HOSTNAME }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Install jq
+      run: sudo apt-get update && sudo apt-get install -y jq
+
+    # - name: Set up SSH
+    #   uses: webfactory/ssh-agent@v0.7.0
+    #   with:
+    #     ssh-private-key: ${{ inputs.ssh_private_key }}
+
+    - name: Setup SSH for Gerrit
+      uses: shimataro/ssh-key-action@v2
+      with:
+        key: ${{ secrets.GERRIT_SSH_PRIVKEY }}
+        name: id_rsa
+        known_hosts: ${{ vars.GERRIT_KNOWN_HOSTS }}
+        config: |
+          Host ${{ vars.GERRIT_SERVER }}
+            User ${{ vars.GERRIT_SSH_USER }}
+            Port ${{ vars.GERRIT_SERVER_PORT }}
+            IdentityFile ~/.ssh/id_rsa
+
+    - name: Run Gerrit Query
+      id: gerrit
+      shell: bash
+      run: |
+        # Validate inputs
+        if [[ -z "${{ inputs.gerrit_url }}" || "${{ inputs.ssh_user_name }}" || "${{ inputs.ssh_user_name }}" ]]; then
+          echo "Error: mandatory input is not set/configured"
+          exit 1
+        fi
+
+        chmod +x .github/scripts/gerrit_query.sh
+        ./.github/scripts/gerrit_query.sh "${{ inputs.gerrit_url }}" "${{ inputs.patchset_number }}" "${{ inputs.ssh_user_name }}"
+
+        # Export action outputs
+        if [ ! -s "${GERRIT_CHANGE_NUMBER}.file" ]; then
+          for envvar in $(cat "${GERRIT_CHANGE_NUMBER}.file"); do
+            echo "$envvar" >> $GITHUB_ENV;
+          done
+        fi
+
+    - name: Verify change-id
+      shell: bash
+      run: |
+        if [[ -z "${{ steps.gerrit.outputs.GERRIT_CHANGE_ID }}" ]]; then
+          echo "Error: Gerrit query failed or change not found."
+          exit 1
+        fi
