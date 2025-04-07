@@ -7,7 +7,6 @@
 
 The gerrit-change-info action takes the Gerrit change URL and patchset number an input and returns information about Gerrit change request that is reused as input in other releng reusable workflows.
 
-
 ## gerrit-change-info
 
 ## Usage Example
@@ -83,4 +82,4 @@ Using a ssh connection to Gerrit server, the gerrit-query CLI command obtains an
 
 ## Notes
 
-The purpose of the workflow reduces the large number of  manually entered inputs by the end use requiring to trigger workflows.  
+The purpose of the workflow reduces the large number of  manually entered inputs by the end use requiring to trigger workflows.
