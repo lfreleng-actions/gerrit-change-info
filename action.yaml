@@ -15,7 +15,7 @@ inputs:
   ssh_user_name:
     description: "SSH Username"
     required: true
-    type: string
+    # type: string
     default: ""
   gerrit_known_hosts:
     description: 'Known hosts entry for Gerrit'
@@ -28,7 +28,7 @@ inputs:
   ssh_private_key:
     description: 'SSH Private Key'
     required: true
-    type: string
+    # type: string
     default: ""
 
 outputs:
