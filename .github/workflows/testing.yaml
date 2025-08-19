@@ -16,7 +16,116 @@ on:
 permissions: {}
 
 jobs:
-  ### Test the GitHub Action in this Repository ###
+  ### Unit Tests for Shell Scripts ###
+  shell-tests:
+    name: "Shell Script Unit Tests"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 3
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: "Install test dependencies"
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck jq
+
+      - name: "Run shellcheck on scripts"
+        shell: bash
+        run: |
+          echo "Running shellcheck on all shell scripts..."
+          shellcheck .github/scripts/*.sh
+
+      - name: "Test URL extraction script"
+        shell: bash
+        run: |
+          echo "Testing extract_ssh_inputs.sh with various URLs..."
+
+          # Test valid URL
+          .github/scripts/extract_ssh_inputs.sh \
+            "https://git.opendaylight.org/gerrit/c/releng/builder/+/111445"
+          if [[ -f gerrit_ssh_info.env ]]; then
+            echo "✓ Valid URL test passed"
+            cat gerrit_ssh_info.env
+            rm gerrit_ssh_info.env
+          else
+            echo "✗ Valid URL test failed"
+            exit 1
+          fi
+
+          # Test URL with patchset
+          .github/scripts/extract_ssh_inputs.sh \
+            "https://gerrit.example.org/c/project/subproject/+/12345/6"
+          if [[ -f gerrit_ssh_info.env ]]; then
+            echo "✓ URL with patchset test passed"
+            rm gerrit_ssh_info.env
+          else
+            echo "✗ URL with patchset test failed"
+            exit 1
+          fi
+
+          # Test invalid URL (should fail)
+          if .github/scripts/extract_ssh_inputs.sh "invalid-url" \
+              2>/dev/null; then
+            echo "✗ Invalid URL test failed (should have failed)"
+            exit 1
+          else
+            echo "✓ Invalid URL properly rejected"
+          fi
+
+      - name: "Test input validation"
+        shell: bash
+        run: |
+          echo "Testing input validation..."
+
+          # Test missing arguments
+          if .github/scripts/extract_ssh_inputs.sh 2>/dev/null; then
+            echo "✗ Missing arguments test failed"
+            exit 1
+          else
+            echo "✓ Missing arguments properly rejected"
+          fi
+
+  ### Matrix Tests Across Different Environments ###
+  matrix-tests:
+    name: "Matrix Tests"
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: "Test action dependencies"
+        shell: bash
+        run: |
+          echo "Testing on ${{ matrix.os }}..."
+
+          # Check required tools
+          echo "Checking dependencies..."
+          which ssh || (echo "SSH not available" && exit 1)
+          which jq || sudo apt-get update && sudo apt-get install -y jq
+          which timeout || (echo "timeout not available" && exit 1)
+
+          echo "✓ Dependencies check passed on ${{ matrix.os }}"
+
+      - name: "Test action input validation"
+        uses: ./
+        with:
+          gerrit_change_url: ""
+          ssh_user_name: "test"
+          ssh_private_key: "fake"
+          gerrit_known_hosts: "fake"
+        continue-on-error: true
+
+  ### Integration Tests ###
   tests:
     name: "Test local GitHub Action"
     runs-on: ubuntu-latest
@@ -51,20 +160,67 @@ jobs:
           echo "Validating local action: ${{ github.repository }}"
           echo "Validation step summary output" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: SSH Key Error Test
+      - name: "Test: Missing SSH Key"
         uses: ./
         with:
-          # yamllint disable-line rule:line-length
-          gerrit_change_url: "https://gerrit.example.org/c/sample-project/+/12345"
+          gerrit_change_url: \
+            "https://gerrit.example.org/c/sample-project/+/12345"
           ssh_user_name: "jenkins"
           ssh_private_key: ""
+          gerrit_known_hosts: \
+            "gerrit.example.org ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC"
         continue-on-error: true
 
-      - name: SSH Key Error Test
+      - name: "Test: Invalid URL Format"
         uses: ./
         with:
-          # yamllint disable-line rule:line-length
-          gerrit_change_url: "https://gerrit.example.org/c/sample-project/+/12345"
+          gerrit_change_url: "not-a-valid-url"
           ssh_user_name: "jenkins"
-          ssh_private_key: ""
+          ssh_private_key: "fake-key"
+          gerrit_known_hosts: "host ssh-rsa key"
+        continue-on-error: true
+
+      - name: "Test: Missing Required Input - URL"
+        uses: ./
+        with:
+          gerrit_change_url: ""
+          ssh_user_name: "jenkins"
+          ssh_private_key: "fake-key"
+          gerrit_known_hosts: "host ssh-rsa key"
+        continue-on-error: true
+
+      - name: "Test: Missing Required Input - Username"
+        uses: ./
+        with:
+          gerrit_change_url: "https://gerrit.example.org/c/project/+/12345"
+          ssh_user_name: ""
+          ssh_private_key: "fake-key"
+          gerrit_known_hosts: "host ssh-rsa key"
+        continue-on-error: true
+
+      - name: "Test: Malformed Gerrit URL"
+        uses: ./
+        with:
+          gerrit_change_url: "https://gerrit.example.org/wrong/path/12345"
+          ssh_user_name: "jenkins"
+          ssh_private_key: "fake-key"
+          gerrit_known_hosts: "host ssh-rsa key"
+        continue-on-error: true
+
+      - name: "Test: Non-numeric Change Number"
+        uses: ./
+        with:
+          gerrit_change_url: "https://gerrit.example.org/c/project/+/abc123"
+          ssh_user_name: "jenkins"
+          ssh_private_key: "fake-key"
+          gerrit_known_hosts: "host ssh-rsa key"
+        continue-on-error: true
+
+      - name: "Test: Invalid SSH Key Format"
+        uses: ./
+        with:
+          gerrit_change_url: "https://gerrit.example.org/c/project/+/12345"
+          ssh_user_name: "jenkins"
+          ssh_private_key: "this-is-not-a-valid-ssh-key"
+          gerrit_known_hosts: "host ssh-rsa key"
         continue-on-error: true

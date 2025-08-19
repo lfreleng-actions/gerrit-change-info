@@ -5,12 +5,20 @@
 
 # Usage: ./extract_ssh_inputs.sh <gerrit_url>
 
+set -euo pipefail
+
 if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 <gerrit_url>"
+  echo "Error: Usage: $0 <gerrit_url>" >&2
   exit 1
 fi
 
 gerrit_url="$1"
+
+# Validate URL format
+if [[ ! "$gerrit_url" =~ ^https?://[^/]+/.*c/.*/\+/[0-9]+ ]]; then
+  echo "Error: Invalid Gerrit URL format. Expected: https://hostname/gerrit/c/project/+/number" >&2
+  exit 1
+fi
 
 # Extract hostname from URL
 extract_hostname() {
@@ -37,8 +45,26 @@ gerrit_hostname=$(extract_hostname "$gerrit_url")
 project=$(extract_project "$gerrit_url")
 change_number=$(extract_change_number "$gerrit_url")
 
+# Validate extracted values
+if [[ -z "$gerrit_hostname" || -z "$project" || -z "$change_number" ]]; then
+  echo "Error: Failed to extract required information from Gerrit URL" >&2
+  echo "Hostname: '$gerrit_hostname', Project: '$project', Change: '$change_number'" >&2
+  exit 1
+fi
+
+# Validate change number is numeric
+if ! [[ "$change_number" =~ ^[0-9]+$ ]]; then
+  echo "Error: Change number must be numeric, got: '$change_number'" >&2
+  exit 1
+fi
+
 {
   echo "GERRIT_HOSTNAME=$gerrit_hostname"
   echo "GERRIT_PROJECT=$project"
   echo "GERRIT_CHANGE_NUMBER=$change_number"
 } > gerrit_ssh_info.env
+
+echo "Successfully extracted Gerrit information:" >&2
+echo "  Hostname: $gerrit_hostname" >&2
+echo "  Project: $project" >&2
+echo "  Change: $change_number" >&2
