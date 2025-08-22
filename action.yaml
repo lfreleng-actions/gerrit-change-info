@@ -73,6 +73,56 @@ runs:
       shell: bash
       run: sudo apt-get update && sudo apt-get install -y jq
 
+    - name: Validate inputs
+      shell: bash
+      run: |
+        # Validate required inputs
+        if [[ -z "${{ inputs.gerrit_change_url }}" ]]; then
+          echo "Error: gerrit_change_url is required" >&2
+          exit 1
+        fi
+
+        if [[ -z "${{ inputs.ssh_user_name }}" ]]; then
+          echo "Error: ssh_user_name is required" >&2
+          exit 1
+        fi
+
+        if [[ -z "${{ inputs.ssh_private_key }}" ]]; then
+          echo "Error: ssh_private_key is required" >&2
+          exit 1
+        fi
+
+        if [[ -z "${{ inputs.gerrit_known_hosts }}" ]]; then
+          echo "Error: gerrit_known_hosts is required" >&2
+          exit 1
+        fi
+
+        echo "Input validation passed" >&2
+
+    - name: Validate SSH key format
+      shell: bash
+      run: |
+        # Create temporary file for secure SSH key validation
+        temp_key_file=$(mktemp)
+        trap 'rm -f "$temp_key_file"' EXIT
+
+        # Write key to temporary file for validation
+        echo "${{ inputs.ssh_private_key }}" > "$temp_key_file"
+
+        # Basic SSH private key validation using file operations
+        if ! head -n 1 "$temp_key_file" | grep -q "BEGIN.*PRIVATE KEY"; then
+          echo "Error: SSH private key appears to be in invalid format" >&2
+          exit 1
+        fi
+
+        # Check for encryption without exposing key content
+        if grep -q "ENCRYPTED" "$temp_key_file"; then
+          echo "Warning: SSH private key appears to be encrypted. " \
+            "Ensure it's in unencrypted format for GitHub Actions." >&2
+        fi
+
+        echo "SSH key format validation passed" >&2
+
     - name: Extract SSH inputs
       id: ssh
       shell: bash
@@ -85,7 +135,8 @@ runs:
         echo "GERRIT_CHANGE_NUMBER=$GERRIT_CHANGE_NUMBER" >> $GITHUB_ENV
 
     - name: Setup SSH for Gerrit
-      uses: shimataro/ssh-key-action@v2
+      # yamllint disable-line rule:line-length
+      uses: shimataro/ssh-key-action@dd5cf4e76bb2cdbab9056da8a56bb64e29d1cbb8 # v2.7.0
       with:
         key: ${{ inputs.ssh_private_key }}
         name: id_rsa
@@ -95,13 +146,19 @@ runs:
             User ${{ inputs.ssh_user_name }}
             Port ${{ inputs.gerrit_server_port }}
             IdentityFile ~/.ssh/id_rsa
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            ConnectTimeout 10
+            ServerAliveInterval 5
+            ServerAliveCountMax 3
 
     - name: Run Gerrit Query
       id: gerrit
       shell: bash
       run: |
         chmod +x .github/scripts/gerrit_query.sh
-        .github/scripts/gerrit_query.sh "${{ inputs.gerrit_change_url }}" \
+        .github/scripts/gerrit_query.sh \
+          "${{ inputs.gerrit_change_url }}" \
             "${{ inputs.gerrit_patchset_number }}" "${{ inputs.ssh_user_name }}"
 
         if [ -s "${GERRIT_CHANGE_NUMBER}.file" ]; then
@@ -117,7 +174,7 @@ runs:
     - name: Validate file output
       shell: bash
       run: |
-        change_number="${{ steps.gerrit.outputs.GERRIT_CHANGE_NUMBER }}
+        change_number="${{ steps.gerrit.outputs.GERRIT_CHANGE_NUMBER }}"
         if [ ! -f "$change_number".file ]; then
           echo "Missing file output"
           exit 1

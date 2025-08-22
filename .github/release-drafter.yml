@@ -35,6 +35,30 @@ categories:
       - "code-quality"
       - "CI"
       - "test"
+version-resolver:
+  major:
+    labels:
+      - "breaking-change"
+  minor:
+    labels:
+      - "feature"
+      - "enhancement"
+  patch:
+    labels:
+      - "fix"
+      - "bugfix"
+      - "bug"
+      - "chore"
+      - "documentation"
+      - "maintenance"
+      - "dependencies"
+      - "github_actions"
+      - "refactor"
+      - "code-quality"
+      - "CI"
+      - "test"
+  default: patch
+
 autolabeler:
   - label: "breaking-change"
     title:
