@@ -136,7 +136,7 @@ runs:
 
     - name: Setup SSH for Gerrit
       # yamllint disable-line rule:line-length
-      uses: shimataro/ssh-key-action@dd5cf4e76bb2cdbab9056da8a56bb64e29d1cbb8 # v2.7.0
+      uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
       with:
         key: ${{ inputs.ssh_private_key }}
         name: id_rsa
