@@ -7,6 +7,9 @@
 
 set -euo pipefail
 
+# Store the current working directory for relative path operations
+WORK_DIR="$(pwd)"
+
 if [ "$#" -ne 1 ]; then
   echo "Error: Usage: $0 <gerrit_url>" >&2
   exit 1
@@ -62,9 +65,10 @@ fi
   echo "GERRIT_HOSTNAME=$gerrit_hostname"
   echo "GERRIT_PROJECT=$project"
   echo "GERRIT_CHANGE_NUMBER=$change_number"
-} > gerrit_ssh_info.env
+} > "$WORK_DIR/gerrit_ssh_info.env"
 
 echo "Successfully extracted Gerrit information:" >&2
 echo "  Hostname: $gerrit_hostname" >&2
 echo "  Project: $project" >&2
 echo "  Change: $change_number" >&2
+echo "  Output file: $WORK_DIR/gerrit_ssh_info.env" >&2

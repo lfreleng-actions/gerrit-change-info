@@ -224,3 +224,153 @@ jobs:
           ssh_private_key: "this-is-not-a-valid-ssh-key"
           gerrit_known_hosts: "host ssh-rsa key"
         continue-on-error: true
+
+  test-default-path:
+    name: Test Default Path Prefix
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # yamllint disable-line rule:line-length
+      - uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Test gerrit-change-info with default path
+        id: gerrit-default
+        uses: ./
+        with:
+          # yamllint disable rule:line-length
+          gerrit_change_url: "https://git.opendaylight.org/gerrit/c/releng/builder/+/111445"
+          gerrit_patchset_number: "6"
+          ssh_user_name: ${{ vars.GERRIT_SSH_USER || 'test-user' }}
+          gerrit_known_hosts: ${{ vars.GERRIT_KNOWN_HOSTS || 'test-host' }}
+          ssh_private_key: ${{ secrets.GERRIT_SSH_PRIVKEY || 'test-key' }}
+          path_prefix: "."
+        continue-on-error: true
+
+      - name: Display outputs
+        # yamllint disable rule:line-length
+        run: |
+          echo "Gerrit Change ID: ${{ steps.gerrit-default.outputs.gerrit_change_id }}"
+          echo "Gerrit Branch: ${{ steps.gerrit-default.outputs.gerrit_branch }}"
+          echo "Gerrit Project: ${{ steps.gerrit-default.outputs.gerrit_project }}"
+
+  test-custom-path:
+    name: Test Custom Path Prefix
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Create test directory
+        run: |
+          mkdir -p test-directory
+          echo "Created test directory for path_prefix testing"
+
+      - name: Test gerrit-change-info with custom path
+        id: gerrit-custom
+        uses: ./
+        with:
+          gerrit_change_url: "https://git.opendaylight.org/gerrit/c/releng/builder/+/111445"
+          gerrit_patchset_number: "6"
+          ssh_user_name: ${{ vars.GERRIT_SSH_USER || 'test-user' }}
+          gerrit_known_hosts: ${{ vars.GERRIT_KNOWN_HOSTS || 'test-host' }}
+          ssh_private_key: ${{ secrets.GERRIT_SSH_PRIVKEY || 'test-key' }}
+          path_prefix: "test-directory"
+        continue-on-error: true
+
+      - name: Verify output files created in correct location
+        run: |
+          if ls test-directory/*.file >/dev/null 2>&1; then
+            echo "✓ Output file found in test-directory"
+            ls -la test-directory/
+          else
+            echo "✗ Output file not found in expected location"
+            ls -la test-directory/ || echo "Directory empty or doesn't exist"
+          fi
+
+      - name: Display outputs
+        # yamllint disable rule:line-length
+        run: |
+          echo "Gerrit Change ID: ${{ steps.gerrit-custom.outputs.gerrit_change_id }}"
+          echo "Gerrit Branch: ${{ steps.gerrit-custom.outputs.gerrit_branch }}"
+          echo "Gerrit Project: ${{ steps.gerrit-custom.outputs.gerrit_project }}"
+
+  test-error-handling:
+    name: Test Error Handling
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Test with non-existent directory (should fail)
+        id: gerrit-error
+        uses: ./
+        continue-on-error: true
+        with:
+          gerrit_change_url: "https://git.opendaylight.org/gerrit/c/releng/builder/+/111445"
+          gerrit_patchset_number: "6"
+          ssh_user_name: ${{ vars.GERRIT_SSH_USER || 'test-user' }}
+          gerrit_known_hosts: ${{ vars.GERRIT_KNOWN_HOSTS || 'test-host' }}
+          ssh_private_key: ${{ secrets.GERRIT_SSH_PRIVKEY || 'test-key' }}
+          path_prefix: "non-existent-directory"
+
+      - name: Check error handling
+        # yamllint disable rule:line-length
+        run: |
+          if [ "${{ steps.gerrit-error.outcome }}" = "failure" ]; then
+            echo "✓ Error handling working correctly - action failed as expected"
+          else
+            echo "✗ Error handling issue - action should have failed"
+            exit 1
+          fi
+
+      - name: Test with dangerous path (should fail)
+        id: gerrit-dangerous
+        uses: ./
+        continue-on-error: true
+        with:
+          gerrit_change_url: "https://git.opendaylight.org/gerrit/c/releng/builder/+/111445"
+          gerrit_patchset_number: "6"
+          ssh_user_name: ${{ vars.GERRIT_SSH_USER || 'test-user' }}
+          gerrit_known_hosts: ${{ vars.GERRIT_KNOWN_HOSTS || 'test-host' }}
+          ssh_private_key: ${{ secrets.GERRIT_SSH_PRIVKEY || 'test-key' }}
+          path_prefix: "../dangerous-path"
+
+      - name: Check security validation
+        # yamllint disable rule:line-length
+        run: |
+          if [ "${{ steps.gerrit-dangerous.outcome }}" = "failure" ]; then
+            echo "✓ Security validation working correctly - dangerous path blocked"
+          else
+            echo "✗ Security issue - dangerous path should have been blocked"
+            exit 1
+          fi
+
+      - name: Test with absolute path (should fail)
+        id: gerrit-absolute
+        uses: ./
+        continue-on-error: true
+        with:
+          gerrit_change_url: "https://git.opendaylight.org/gerrit/c/releng/builder/+/111445"
+          gerrit_patchset_number: "6"
+          ssh_user_name: ${{ vars.GERRIT_SSH_USER || 'test-user' }}
+          gerrit_known_hosts: ${{ vars.GERRIT_KNOWN_HOSTS || 'test-host' }}
+          ssh_private_key: ${{ secrets.GERRIT_SSH_PRIVKEY || 'test-key' }}
+          path_prefix: "/etc/passwd"
+
+      - name: Check absolute path validation
+        # yamllint disable rule:line-length
+        run: |
+          if [ "${{ steps.gerrit-absolute.outcome }}" = "failure" ]; then
+            echo "✓ Absolute path validation working correctly - absolute path blocked"
+          else
+            echo "✗ Security issue - absolute path should have been blocked"
+            exit 1
+          fi

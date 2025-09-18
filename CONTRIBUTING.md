@@ -112,18 +112,35 @@ docs: update README with troubleshooting section
    cat gerrit_ssh_info.env
    ```
 
-2. **Action Testing**
+2. **Path Prefix Feature Testing**
+
+   ```bash
+   # Test with default path
+   mkdir -p test-workspace && cd test-workspace
+   ../.github/scripts/extract_ssh_inputs.sh "https://gerrit.example.org/c/project/+/12345"
+
+   # Test with custom directory
+   mkdir -p custom-dir && cd custom-dir
+   ../../.github/scripts/extract_ssh_inputs.sh "https://gerrit.example.org/c/project/+/12345"
+
+   # Verify files appear in correct locations
+   ls -la */gerrit_ssh_info.env
+   ```
+
+3. **Action Testing**
    - The GitHub Action tests run automatically on push/PR
    - Tests run with `continue-on-error: true` to prevent CI failures when
      secrets are unavailable
+   - Use `.github/workflows/testing.yml` to test path_prefix
 
 ### Integration Testing
 
-The repository includes comprehensive integration tests in `.github/workflows/testing.yaml`:
+The repository includes comprehensive integration tests:
 
 - **Valid input testing** - Tests with real Gerrit URLs
 - **Error condition testing** - Tests missing credentials and invalid URLs
 - **Output validation** - Verifies action produces expected outputs
+- **Path prefix testing** - Tests default paths, custom directories, and error conditions
 
 ## 📝 Documentation
 
