@@ -127,8 +127,10 @@ runs:
       id: ssh
       shell: bash
       run: |
-        chmod +x .github/scripts/extract_ssh_inputs.sh
-        .github/scripts/extract_ssh_inputs.sh "${{ inputs.gerrit_change_url }}"
+        cp "${{ github.action_path }}/.github/scripts/extract_ssh_inputs.sh" \
+            ./extract_ssh_inputs.sh
+        chmod +x ./extract_ssh_inputs.sh
+        ./extract_ssh_inputs.sh "${{ inputs.gerrit_change_url }}"
         source gerrit_ssh_info.env
         echo "GERRIT_HOSTNAME=$GERRIT_HOSTNAME" >> $GITHUB_ENV
         echo "GERRIT_PROJECT=$GERRIT_PROJECT" >> $GITHUB_ENV
@@ -155,9 +157,12 @@ runs:
     - name: Run Gerrit Query
       id: gerrit
       shell: bash
+      # yamllint disable-line rule:line-length
       run: |
-        chmod +x .github/scripts/gerrit_query.sh
-        .github/scripts/gerrit_query.sh \
+        cp "${{ github.action_path }}/.github/scripts/gerrit_query.sh" \
+              ./gerrit_query.sh
+        chmod +x ./gerrit_query.sh
+        ./gerrit_query.sh \
           "${{ inputs.gerrit_change_url }}" \
             "${{ inputs.gerrit_patchset_number }}" "${{ inputs.ssh_user_name }}"
 
