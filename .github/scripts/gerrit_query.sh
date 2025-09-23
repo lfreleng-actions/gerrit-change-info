@@ -56,7 +56,7 @@ change_number=$(extract_change_number "$gerrit_url")
 project=$(extract_project "$gerrit_url")
 
 # Build SSH command with timeout and better error handling
-ssh_command="timeout $SSH_TIMEOUT ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -p 29418 $ssh_user_name@$gerrit_hostname 'gerrit query --format=JSON project:$project change:$change_number owner:self is:open limit:1"
+ssh_command="timeout $SSH_TIMEOUT ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -p 29418 $ssh_user_name@$gerrit_hostname 'gerrit query --format=JSON project:$project change:$change_number is:open limit:1"
 
 if [ -n "$cid_patch_set_no" ]; then
     ssh_command="$ssh_command --patch-sets"
@@ -89,6 +89,10 @@ fi
 
 # Parse with jq and validate JSON
 echo "Parsing Gerrit query response..." >&2
+
+# Print raw response for debugging
+echo "Raw JSON response:" >&2
+echo "$json_output" >&2
 
 # Validate JSON format
 if ! echo "$json_output" | jq empty 2>/dev/null; then
