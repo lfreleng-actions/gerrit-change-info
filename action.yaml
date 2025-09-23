@@ -30,6 +30,10 @@ inputs:
     required: true
     # type: string
     default: ""
+  path_prefix:
+    description: 'Directory path prefix for executing the action'
+    required: false
+    default: "."
 
 outputs:
   gerrit_branch:
@@ -68,6 +72,32 @@ runs:
   steps:
     - name: Checkout repository
       uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+    - name: Setup working directory and validate path_prefix
+      # yamllint disable rule:line-length
+      shell: bash
+      run: |
+        path_prefix="${{ inputs.path_prefix }}"
+
+        # Validate path_prefix is not empty
+        if [[ -z "$path_prefix" ]]; then
+          echo "Error: path_prefix cannot be empty" >&2
+          exit 1
+        fi
+
+        # Check for dangerous characters or paths
+        if [[ "$path_prefix" =~ \.\./|^\.\.$|/\.\./|/\.\.$|^\.\.|^/ ]]; then
+          echo "Error: path_prefix cannot contain '..' (parent directory references) or start with '/' (absolute paths)" >&2
+          exit 1
+        fi
+
+        # Create the directory if it doesn't exist and it's not the default
+        if [[ "$path_prefix" != "." && ! -d "$path_prefix" ]]; then
+          echo "Creating directory: $path_prefix" >&2
+          mkdir -p "$path_prefix"
+        fi
+
+        echo "Path prefix validation and setup completed: $path_prefix" >&2
 
     - name: Install jq
       shell: bash
@@ -124,18 +154,29 @@ runs:
         echo "SSH key format validation passed" >&2
 
     - name: Extract SSH inputs
+      # yamllint disable rule:line-length
       id: ssh
       shell: bash
       run: |
-        chmod +x .github/scripts/extract_ssh_inputs.sh
-        .github/scripts/extract_ssh_inputs.sh "${{ inputs.gerrit_change_url }}"
+        path_prefix="${{ inputs.path_prefix }}"
+
+        # Change to the specified directory
+        if [[ "$path_prefix" != "." ]]; then
+          cd "$path_prefix"
+          echo "Changed to directory: $(pwd)" >&2
+        fi
+
+        chmod +x "${{ github.action_path }}/.github/scripts/extract_ssh_inputs.sh"
+        "${{ github.action_path }}/.github/scripts/extract_ssh_inputs.sh" \
+          "${{ inputs.gerrit_change_url }}"
+
         source gerrit_ssh_info.env
         echo "GERRIT_HOSTNAME=$GERRIT_HOSTNAME" >> $GITHUB_ENV
         echo "GERRIT_PROJECT=$GERRIT_PROJECT" >> $GITHUB_ENV
         echo "GERRIT_CHANGE_NUMBER=$GERRIT_CHANGE_NUMBER" >> $GITHUB_ENV
 
     - name: Setup SSH for Gerrit
-      # yamllint disable-line rule:line-length
+      # yamllint disable rule:line-length
       uses: shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4 # v2.7.0
       with:
         key: ${{ inputs.ssh_private_key }}
@@ -155,11 +196,21 @@ runs:
     - name: Run Gerrit Query
       id: gerrit
       shell: bash
+      # yamllint disable rule:line-length
       run: |
-        chmod +x .github/scripts/gerrit_query.sh
-        .github/scripts/gerrit_query.sh \
-          "${{ inputs.gerrit_change_url }}" \
-            "${{ inputs.gerrit_patchset_number }}" "${{ inputs.ssh_user_name }}"
+        path_prefix="${{ inputs.path_prefix }}"
+
+        # Change to the specified directory
+        if [[ "$path_prefix" != "." ]]; then
+          cd "$path_prefix"
+          echo "Changed to directory: $(pwd)" >&2
+        fi
+
+        chmod +x "${{ github.action_path }}/.github/scripts/gerrit_query.sh"
+        "${{ github.action_path }}/.github/scripts/gerrit_query.sh" \
+            "${{ inputs.gerrit_change_url }}" \
+            "${{ inputs.gerrit_patchset_number }}" \
+            "${{ inputs.ssh_user_name }}"
 
         if [ -s "${GERRIT_CHANGE_NUMBER}.file" ]; then
           while IFS= read -r envvar; do
@@ -174,9 +225,17 @@ runs:
     - name: Validate file output
       shell: bash
       run: |
+        path_prefix="${{ inputs.path_prefix }}"
+
+        # Change to the specified directory
+        if [[ "$path_prefix" != "." ]]; then
+          cd "$path_prefix"
+          echo "Validating file output in directory: $(pwd)" >&2
+        fi
+
         change_number="${{ steps.gerrit.outputs.GERRIT_CHANGE_NUMBER }}"
         if [ ! -f "$change_number".file ]; then
-          echo "Missing file output"
+          echo "Missing file output: $change_number.file"
           exit 1
         fi
 

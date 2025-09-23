@@ -15,6 +15,8 @@ releng reusable workflows then reuse as input.
 
 <!-- markdownlint-disable MD046 -->
 
+### Basic Usage (Default path)
+
 ```yaml
 steps:
   - name: "Gerrit change information"
@@ -24,6 +26,41 @@ steps:
       GERRIT_CHANGE_URL: ${{ inputs.GERRIT_CHANGE_URL }}
       GERRIT_SSH_USER: ${{ vars.GERRIT_SSH_USER }}
       GERRIT_PATCHSET_NUMBER: ${{ inputs.GERRIT_PATCHSET_NUMBER }}
+      path_prefix: "." # Optional: directory to execute the action in
+    secrets:
+      GERRIT_SSH_PRIVKEY: ${{ secrets.GERRIT_SSH_PRIVKEY }}
+
+```
+
+### Usage with Custom Directory
+
+```yaml
+steps:
+  - name: "Gerrit change information"
+    id: gerrit
+    uses: lfreleng-actions/gerrit-change-info@main
+    with:
+      GERRIT_CHANGE_URL: ${{ inputs.GERRIT_CHANGE_URL }}
+      GERRIT_SSH_USER: ${{ vars.GERRIT_SSH_USER }}
+      GERRIT_PATCHSET_NUMBER: ${{ inputs.GERRIT_PATCHSET_NUMBER }}
+      path_prefix: "my-project"
+    secrets:
+      GERRIT_SSH_PRIVKEY: ${{ secrets.GERRIT_SSH_PRIVKEY }}
+
+```
+
+### Usage with Nested Directory Structure
+
+```yaml
+steps:
+  - name: "Gerrit change information"
+    id: gerrit
+    uses: lfreleng-actions/gerrit-change-info@main
+    with:
+      GERRIT_CHANGE_URL: ${{ inputs.GERRIT_CHANGE_URL }}
+      GERRIT_SSH_USER: ${{ vars.GERRIT_SSH_USER }}
+      GERRIT_PATCHSET_NUMBER: ${{ inputs.GERRIT_PATCHSET_NUMBER }}
+      path_prefix: "projects/subproject"
     secrets:
       GERRIT_SSH_PRIVKEY: ${{ secrets.GERRIT_SSH_PRIVKEY }}
 
@@ -41,6 +78,7 @@ steps:
 | GERRIT_SSH_USER        | Yes      | SSH User name               |
 | GERRIT_PATCHSET_NUMBER | False    | Gerrit patchset number      |
 | GERRIT_SSH_PRIVKEY     | False    | Gerrit SSH user private key |
+| path_prefix            | False    | Directory path prefix for executing the action (default: ".") |
 
 <!-- markdownlint-enable MD013 -->
 
@@ -84,12 +122,29 @@ Using an SSH connection to the Gerrit server, the gerrit-query CLI command
 obtains and validates parameters required by downstream reusable
 workflows.
 
+### Path Prefix Support
+
+The action supports a `path_prefix` parameter for execution in different contexts:
+
+- **Default behavior**: With `path_prefix="."`, runs in repository root
+- **Custom directories**: Specify any directory path relative to the repository root
+- **Nested structures**: Support for paths like `"projects/subproject"`
+- **Backward compatibility**: Existing workflows continue to work
+
+The action automatically:
+
+- Validates the specified path exists and is accessible
+- Changes to the target directory before executing scripts
+- Creates output files in the correct location
+- Prevents directory traversal attacks (blocks paths containing `..`)
+
 ### Security Features
 
 - Input validation for all parameters
 - SSH timeout handling (30 seconds)
 - Strict host key checking enabled
 - No sensitive data exposed in logs
+- Path traversal protection for `path_prefix`
 
 ### Error Handling
 
@@ -101,6 +156,27 @@ workflows.
 ## Troubleshooting
 
 ### Common Issues
+
+#### Path Prefix Errors
+
+```text
+Error: path_prefix directory does not exist: my-directory
+```
+
+- **Cause**: The specified `path_prefix` directory doesn't exist in the repository
+- **Solution**:
+  - Ensure the directory exists in your repository
+  - Check spelling and case sensitivity
+  - Use relative paths from repository root
+
+```text
+Error: path_prefix cannot contain '..' (parent directory references)
+```
+
+- **Cause**: Security protection against directory traversal attacks
+- **Solution**: Use valid relative paths without `..` references
+- **Valid examples**: `"src"`, `"projects/web"`, `"tools/ci"`
+- **Invalid examples**: `"../parent"`, `"src/../tools"`, `".."`
 
 #### SSH Connection Failures
 

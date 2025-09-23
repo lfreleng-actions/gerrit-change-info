@@ -7,6 +7,9 @@
 
 set -euo pipefail
 
+# Store the current working directory for relative path operations
+WORK_DIR="$(pwd)"
+
 # Timeout for SSH operations (30 seconds)
 SSH_TIMEOUT=30
 
@@ -117,8 +120,8 @@ if [[ -z "$GERRIT_BRANCH" || -z "$GERRIT_PATCHSET_REVISION" ]]; then
   exit 1
 fi
 
-# Write output file
-output_file="$change_number.file"
+# Write output file to the working directory
+output_file="$WORK_DIR/$change_number.file"
 {
     echo "GERRIT_BRANCH=$GERRIT_BRANCH"
     echo "GERRIT_CHANGE_ID=$GERRIT_CHANGE_ID"
