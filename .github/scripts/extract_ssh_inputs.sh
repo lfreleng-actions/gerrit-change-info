@@ -36,7 +36,7 @@ extract_hostname() {
 
 # Extract project from URL
 extract_project() {
-  echo "$1" | sed -E 's#.*/c/([^/]+/[^/]+)/\+.*#\1#'
+  echo "$1" | sed -E 's#.*/c/([^+]+)/\+.*#\1#'
 }
 
 # Extract change number
