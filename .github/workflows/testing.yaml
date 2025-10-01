@@ -44,26 +44,45 @@ jobs:
         run: |
           echo "Testing extract_ssh_inputs.sh with various URLs..."
 
-          # Test valid URL
+          # Test single-segment project path
           .github/scripts/extract_ssh_inputs.sh \
-            "https://git.opendaylight.org/gerrit/c/releng/builder/+/111445"
+            "https://git.opendaylight.org/gerrit/c/docs/+/118037"
           if [[ -f gerrit_ssh_info.env ]]; then
-            echo "✓ Valid URL test passed"
+            echo "✓ Single-segment path test passed"
             cat gerrit_ssh_info.env
+            # Verify correct project extraction
+            if grep -q "GERRIT_PROJECT=docs" gerrit_ssh_info.env; then
+              echo "  ✓ Project correctly extracted as 'docs'"
+            else
+              echo "  ✗ Project extraction failed"
+              exit 1
+            fi
             rm gerrit_ssh_info.env
           else
-            echo "✗ Valid URL test failed"
+            echo "✗ Single-segment path test failed"
             exit 1
           fi
 
-          # Test URL with patchset
+          # Test two-segment project path
+          .github/scripts/extract_ssh_inputs.sh \
+            "https://git.opendaylight.org/gerrit/c/releng/builder/+/111445"
+          if [[ -f gerrit_ssh_info.env ]]; then
+            echo "✓ Two-segment path test passed"
+            cat gerrit_ssh_info.env
+            rm gerrit_ssh_info.env
+          else
+            echo "✗ Two-segment path test failed"
+            exit 1
+          fi
+
+          # Test three-segment project path with patchset
           .github/scripts/extract_ssh_inputs.sh \
             "https://gerrit.example.org/c/project/subproject/+/12345/6"
           if [[ -f gerrit_ssh_info.env ]]; then
-            echo "✓ URL with patchset test passed"
+            echo "✓ Three-segment path with patchset test passed"
             rm gerrit_ssh_info.env
           else
-            echo "✗ URL with patchset test failed"
+            echo "✗ Three-segment path with patchset test failed"
             exit 1
           fi
 

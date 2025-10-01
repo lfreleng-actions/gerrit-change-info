@@ -40,7 +40,7 @@ if [[ -n "$cid_patch_set_no" && ! "$cid_patch_set_no" =~ ^[0-9]+$ ]]; then
 fi
 
 extract_project() {
-  echo "$1" | sed -E 's#.*/c/([^/]+/[^/]+)/\+.*#\1#'
+  echo "$1" | sed -E 's#.*/c/([^+]+)/\+.*#\1#'
 }
 
 extract_change_number() {
