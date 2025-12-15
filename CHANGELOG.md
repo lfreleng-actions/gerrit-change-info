@@ -50,7 +50,7 @@ SPDX-FileCopyrightText: 2025 The Linux Foundation
 
 - `action.yaml`: Added path_prefix input and updated all steps to support it
 - `.github/scripts/extract_ssh_inputs.sh`: Modified to work with different directories
-- `.github/scripts/gerrit_query.sh`: Modified to create output files in correct locations
+- `.github/scripts/gerrit_query.sh`: Now creates output files in correct locations
 - `README.md`: Updated with new parameter documentation and examples
 - `CONTRIBUTING.md`: Added testing instructions for path_prefix feature
 - Added: `.github/workflows/test-path-prefix.yml`: Comprehensive test workflow

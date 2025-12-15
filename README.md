@@ -72,12 +72,12 @@ steps:
 
 <!-- markdownlint-disable MD013 -->
 
-| Variable Name          | Required | Description                 |
-| ---------------------- | -------- | --------------------------- |
-| GERRIT_CHANGE_URL      | Yes      | Gerrit change-request URL   |
-| GERRIT_SSH_USER        | Yes      | SSH User name               |
-| GERRIT_PATCHSET_NUMBER | False    | Gerrit patchset number      |
-| GERRIT_SSH_PRIVKEY     | False    | Gerrit SSH user private key |
+| Variable Name          | Required | Description                                                   |
+| ---------------------- | -------- | ------------------------------------------------------------- |
+| GERRIT_CHANGE_URL      | Yes      | Gerrit change-request URL                                     |
+| GERRIT_SSH_USER        | Yes      | SSH User name                                                 |
+| GERRIT_PATCHSET_NUMBER | False    | Gerrit patchset number                                        |
+| GERRIT_SSH_PRIVKEY     | False    | Gerrit SSH user private key                                   |
 | path_prefix            | False    | Directory path prefix for executing the action (default: ".") |
 
 <!-- markdownlint-enable MD013 -->
@@ -86,18 +86,18 @@ steps:
 
 <!-- markdownlint-disable MD013 -->
 
-| Variable Name           | Description                           |
-| ----------------------- | ------------------------------------- |
-| GERRIT_BRANCH           | Gerrit branch                         |
-| GERRIT_CHANGE_ID        | Gerrit change ID                      |
-| GERRIT_CHANGE_URL       | Gerrit change URL                     |
-| GERRIT_CHANGE_NUMBER    | Gerrit change number                  |
-| GERRIT_EVENT_TYPE       | Gerrit event type                     |
-| GERRIT_PATCHSET_NUMBER  | Gerrit change patchset revision number|
-| GERRIT_PATCHSET_REVISION| Gerrit change patchset revision sha   |
-| GERRIT_PROJECT          | Gerrit project                        |
-| GERRIT_REFSPEC          | refspec of the Gerrit change request  |
-| GERRIT_HOSTNAME         | Gerrit hostname                       |
+| Variable Name            | Description                            |
+| ------------------------ | -------------------------------------- |
+| GERRIT_BRANCH            | Gerrit branch                          |
+| GERRIT_CHANGE_ID         | Gerrit change ID                       |
+| GERRIT_CHANGE_URL        | Gerrit change URL                      |
+| GERRIT_CHANGE_NUMBER     | Gerrit change number                   |
+| GERRIT_EVENT_TYPE        | Gerrit event type                      |
+| GERRIT_PATCHSET_NUMBER   | Gerrit change patchset revision number |
+| GERRIT_PATCHSET_REVISION | Gerrit change patchset revision sha    |
+| GERRIT_PROJECT           | Gerrit project                         |
+| GERRIT_REFSPEC           | refspec of the Gerrit change request   |
+| GERRIT_HOSTNAME          | Gerrit hostname                        |
 
 <!-- markdownlint-enable MD013 -->
 
@@ -127,7 +127,7 @@ workflows.
 The action supports a `path_prefix` parameter for execution in different contexts:
 
 - **Default behavior**: With `path_prefix="."`, runs in repository root
-- **Custom directories**: Specify any directory path relative to the repository root
+- **Custom directories**: Specify directory path relative to the repository root
 - **Nested structures**: Support for paths like `"projects/subproject"`
 - **Backward compatibility**: Existing workflows continue to work
 
