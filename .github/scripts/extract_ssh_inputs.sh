@@ -61,6 +61,19 @@ if ! [[ "$change_number" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
+# Validate hostname and project against safe character sets. These values
+# flow into the runner environment (and the downstream SSH config), so
+# reject anything that could enable injection.
+if [[ ! "$gerrit_hostname" =~ ^[A-Za-z0-9.-]+$ ]]; then
+  echo "Error: Invalid Gerrit hostname: '$gerrit_hostname'" >&2
+  exit 1
+fi
+
+if [[ ! "$project" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+  echo "Error: Invalid Gerrit project: '$project'" >&2
+  exit 1
+fi
+
 {
   echo "GERRIT_HOSTNAME=$gerrit_hostname"
   echo "GERRIT_PROJECT=$project"

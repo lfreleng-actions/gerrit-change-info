@@ -72,32 +72,37 @@ runs:
   steps:
     - name: Checkout repository
       uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      with:
+        # This action only reads the repo and queries Gerrit; it never
+        # pushes, so the checkout token must not be persisted to
+        # .git/config (artipacked hardening).
+        persist-credentials: false
 
     - name: Setup working directory and validate path_prefix
       # yamllint disable rule:line-length
       shell: bash
+      env:
+        PATH_PREFIX: ${{ inputs.path_prefix }}
       run: |
-        path_prefix="${{ inputs.path_prefix }}"
-
         # Validate path_prefix is not empty
-        if [[ -z "$path_prefix" ]]; then
+        if [[ -z "$PATH_PREFIX" ]]; then
           echo "Error: path_prefix cannot be empty" >&2
           exit 1
         fi
 
         # Check for dangerous characters or paths
-        if [[ "$path_prefix" =~ \.\./|^\.\.$|/\.\./|/\.\.$|^\.\.|^/ ]]; then
+        if [[ "$PATH_PREFIX" =~ \.\./|^\.\.$|/\.\./|/\.\.$|^\.\.|^/ ]]; then
           echo "Error: path_prefix cannot contain '..' (parent directory references) or start with '/' (absolute paths)" >&2
           exit 1
         fi
 
         # Create the directory if it doesn't exist and it's not the default
-        if [[ "$path_prefix" != "." && ! -d "$path_prefix" ]]; then
-          echo "Creating directory: $path_prefix" >&2
-          mkdir -p "$path_prefix"
+        if [[ "$PATH_PREFIX" != "." && ! -d "$PATH_PREFIX" ]]; then
+          echo "Creating directory: $PATH_PREFIX" >&2
+          mkdir -p "$PATH_PREFIX"
         fi
 
-        echo "Path prefix validation and setup completed: $path_prefix" >&2
+        echo "Path prefix validation and setup completed: $PATH_PREFIX" >&2
 
     - name: Install jq
       shell: bash
@@ -105,25 +110,49 @@ runs:
 
     - name: Validate inputs
       shell: bash
+      env:
+        GERRIT_CHANGE_URL: ${{ inputs.gerrit_change_url }}
+        SSH_USER_NAME: ${{ inputs.ssh_user_name }}
+        SSH_PRIVATE_KEY: ${{ inputs.ssh_private_key }}
+        GERRIT_KNOWN_HOSTS: ${{ inputs.gerrit_known_hosts }}
+        GERRIT_SERVER_PORT: ${{ inputs.gerrit_server_port }}
       run: |
         # Validate required inputs
-        if [[ -z "${{ inputs.gerrit_change_url }}" ]]; then
+        if [[ -z "$GERRIT_CHANGE_URL" ]]; then
           echo "Error: gerrit_change_url is required" >&2
           exit 1
         fi
 
-        if [[ -z "${{ inputs.ssh_user_name }}" ]]; then
+        if [[ -z "$SSH_USER_NAME" ]]; then
           echo "Error: ssh_user_name is required" >&2
           exit 1
         fi
 
-        if [[ -z "${{ inputs.ssh_private_key }}" ]]; then
+        if [[ -z "$SSH_PRIVATE_KEY" ]]; then
           echo "Error: ssh_private_key is required" >&2
           exit 1
         fi
 
-        if [[ -z "${{ inputs.gerrit_known_hosts }}" ]]; then
+        if [[ -z "$GERRIT_KNOWN_HOSTS" ]]; then
           echo "Error: gerrit_known_hosts is required" >&2
+          exit 1
+        fi
+
+        # Restrict ssh_user_name to a safe character set; it is
+        # interpolated into the generated SSH config and used to build the
+        # SSH destination. A leading dash is rejected so the value cannot
+        # be parsed as an SSH option (option-injection).
+        if [[ ! "$SSH_USER_NAME" =~ ^[A-Za-z0-9._][A-Za-z0-9._-]*$ ]]; then
+          echo "Error: Invalid ssh_user_name: '$SSH_USER_NAME'" >&2
+          exit 1
+        fi
+
+        # Validate gerrit_server_port as a numeric TCP port (1-65535); it
+        # is interpolated into the generated SSH config.
+        if [[ ! "$GERRIT_SERVER_PORT" =~ ^[0-9]+$ ]] \
+            || [ "$GERRIT_SERVER_PORT" -lt 1 ] \
+            || [ "$GERRIT_SERVER_PORT" -gt 65535 ]; then
+          echo "Error: Invalid gerrit_server_port: '$GERRIT_SERVER_PORT'" >&2
           exit 1
         fi
 
@@ -131,13 +160,15 @@ runs:
 
     - name: Validate SSH key format
       shell: bash
+      env:
+        SSH_PRIVATE_KEY: ${{ inputs.ssh_private_key }}
       run: |
         # Create temporary file for secure SSH key validation
         temp_key_file=$(mktemp)
         trap 'rm -f "$temp_key_file"' EXIT
 
         # Write key to temporary file for validation
-        echo "${{ inputs.ssh_private_key }}" > "$temp_key_file"
+        printf '%s\n' "$SSH_PRIVATE_KEY" > "$temp_key_file"
 
         # Basic SSH private key validation using file operations
         if ! head -n 1 "$temp_key_file" | grep -q "BEGIN.*PRIVATE KEY"; then
@@ -157,23 +188,36 @@ runs:
       # yamllint disable rule:line-length
       id: ssh
       shell: bash
-      run: |
-        path_prefix="${{ inputs.path_prefix }}"
-
+      env:
+        PATH_PREFIX: ${{ inputs.path_prefix }}
+        ACTION_PATH: ${{ github.action_path }}
+        GERRIT_CHANGE_URL: ${{ inputs.gerrit_change_url }}
+      # The GITHUB_ENV writes below are intentional: GERRIT_HOSTNAME is
+      # consumed by the next step's SSH config, and the action exports
+      # Gerrit values to the job environment. Only an explicit allow-list
+      # of keys is written and the helper script validates the values,
+      # so arbitrary-variable injection is prevented.
+      run: | # zizmor: ignore[github-env]
         # Change to the specified directory
-        if [[ "$path_prefix" != "." ]]; then
-          cd "$path_prefix"
+        if [[ "$PATH_PREFIX" != "." ]]; then
+          cd "$PATH_PREFIX"
           echo "Changed to directory: $(pwd)" >&2
         fi
 
-        chmod +x "${{ github.action_path }}/.github/scripts/extract_ssh_inputs.sh"
-        "${{ github.action_path }}/.github/scripts/extract_ssh_inputs.sh" \
-          "${{ inputs.gerrit_change_url }}"
+        chmod +x "${ACTION_PATH}/.github/scripts/extract_ssh_inputs.sh"
+        "${ACTION_PATH}/.github/scripts/extract_ssh_inputs.sh" \
+          "$GERRIT_CHANGE_URL"
 
-        source gerrit_ssh_info.env
-        echo "GERRIT_HOSTNAME=$GERRIT_HOSTNAME" >> $GITHUB_ENV
-        echo "GERRIT_PROJECT=$GERRIT_PROJECT" >> $GITHUB_ENV
-        echo "GERRIT_CHANGE_NUMBER=$GERRIT_CHANGE_NUMBER" >> $GITHUB_ENV
+        # Safely import extracted values. The file is parsed as KEY=VALUE
+        # data against an explicit allow-list; it is NOT sourced, so a
+        # crafted value cannot execute code on the runner.
+        while IFS='=' read -r key value; do
+          case "$key" in
+            GERRIT_HOSTNAME|GERRIT_PROJECT|GERRIT_CHANGE_NUMBER)
+              printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
+              ;;
+          esac
+        done < gerrit_ssh_info.env
 
     - name: Setup SSH for Gerrit
       # yamllint disable rule:line-length
@@ -197,25 +241,44 @@ runs:
       id: gerrit
       shell: bash
       # yamllint disable rule:line-length
-      run: |
-        path_prefix="${{ inputs.path_prefix }}"
-
+      env:
+        PATH_PREFIX: ${{ inputs.path_prefix }}
+        ACTION_PATH: ${{ github.action_path }}
+        GERRIT_CHANGE_URL: ${{ inputs.gerrit_change_url }}
+        GERRIT_PATCHSET_NUMBER: ${{ inputs.gerrit_patchset_number }}
+        SSH_USER_NAME: ${{ inputs.ssh_user_name }}
+        GERRIT_SERVER_PORT: ${{ inputs.gerrit_server_port }}
+      # The GITHUB_ENV/GITHUB_OUTPUT writes below export Gerrit query
+      # results to the job environment for downstream steps and consumers.
+      # Only an explicit allow-list of Gerrit keys is written (see the
+      # 'allowed' regex) and the helper script validates the values, so
+      # arbitrary-variable injection is prevented.
+      run: | # zizmor: ignore[github-env]
         # Change to the specified directory
-        if [[ "$path_prefix" != "." ]]; then
-          cd "$path_prefix"
+        if [[ "$PATH_PREFIX" != "." ]]; then
+          cd "$PATH_PREFIX"
           echo "Changed to directory: $(pwd)" >&2
         fi
 
-        chmod +x "${{ github.action_path }}/.github/scripts/gerrit_query.sh"
-        "${{ github.action_path }}/.github/scripts/gerrit_query.sh" \
-            "${{ inputs.gerrit_change_url }}" \
-            "${{ inputs.gerrit_patchset_number }}" \
-            "${{ inputs.ssh_user_name }}"
+        chmod +x "${ACTION_PATH}/.github/scripts/gerrit_query.sh"
+        "${ACTION_PATH}/.github/scripts/gerrit_query.sh" \
+            "$GERRIT_CHANGE_URL" \
+            "$GERRIT_PATCHSET_NUMBER" \
+            "$SSH_USER_NAME" \
+            "$GERRIT_SERVER_PORT"
 
+        # Export query results to the environment and step outputs. Only an
+        # explicit allow-list of Gerrit keys is written, guarding against
+        # injection of arbitrary variables via a crafted Gerrit field.
+        allowed='^(GERRIT_BRANCH|GERRIT_CHANGE_ID|GERRIT_CHANGE_URL|GERRIT_CHANGE_NUMBER|GERRIT_EVENT_TYPE|GERRIT_PATCHSET_NUMBER|GERRIT_PATCHSET_REVISION|GERRIT_PROJECT|GERRIT_REFSPEC|GERRIT_HOSTNAME)='
         if [ -s "${GERRIT_CHANGE_NUMBER}.file" ]; then
           while IFS= read -r envvar; do
-            echo "$envvar" >> $GITHUB_ENV
-            echo "$envvar" >> $GITHUB_OUTPUT
+            if [[ "$envvar" =~ $allowed ]]; then
+              printf '%s\n' "$envvar" >> "$GITHUB_ENV"
+              printf '%s\n' "$envvar" >> "$GITHUB_OUTPUT"
+            else
+              echo "Skipping unexpected output line: $envvar" >&2
+            fi
           done < "${GERRIT_CHANGE_NUMBER}.file"
         else
           echo "Error: Gerrit query output file not found or empty."
@@ -224,50 +287,27 @@ runs:
 
     - name: Validate file output
       shell: bash
+      env:
+        PATH_PREFIX: ${{ inputs.path_prefix }}
+        GERRIT_CHANGE_NUMBER: ${{ steps.gerrit.outputs.GERRIT_CHANGE_NUMBER }}
       run: |
-        path_prefix="${{ inputs.path_prefix }}"
-
         # Change to the specified directory
-        if [[ "$path_prefix" != "." ]]; then
-          cd "$path_prefix"
+        if [[ "$PATH_PREFIX" != "." ]]; then
+          cd "$PATH_PREFIX"
           echo "Validating file output in directory: $(pwd)" >&2
         fi
 
-        change_number="${{ steps.gerrit.outputs.GERRIT_CHANGE_NUMBER }}"
-        if [ ! -f "$change_number".file ]; then
-          echo "Missing file output: $change_number.file"
+        if [ ! -f "${GERRIT_CHANGE_NUMBER}.file" ]; then
+          echo "Missing file output: ${GERRIT_CHANGE_NUMBER}.file"
           exit 1
         fi
 
     - name: Verify change-id
       shell: bash
+      env:
+        GERRIT_CHANGE_ID: ${{ steps.gerrit.outputs.GERRIT_CHANGE_ID }}
       run: |
-        if [[ -z "${{ steps.gerrit.outputs.GERRIT_CHANGE_ID }}" ]]; then
+        if [[ -z "$GERRIT_CHANGE_ID" ]]; then
           echo "Error: Gerrit query failed or change not found."
           exit 1
         fi
-
-    - name: Export Gerrit outputs
-      shell: bash
-      run: |
-        echo "GERRIT_BRANCH=${{ steps.gerrit.outputs.GERRIT_BRANCH }}" \
-          >> "$GITHUB_ENV"
-        echo "GERRIT_CHANGE_ID=${{ steps.gerrit.outputs.GERRIT_CHANGE_ID }}" \
-          >> "$GITHUB_ENV"
-        echo "GERRIT_CHANGE_URL=${{ steps.gerrit.outputs.GERRIT_CHANGE_URL }}" \
-          >> "$GITHUB_ENV"
-        echo "GERRIT_CHANGE_NUMBER=" \
-          "${{ steps.gerrit.outputs.GERRIT_CHANGE_NUMBER }}" >> "$GITHUB_ENV"
-        echo "GERRIT_EVENT_TYPE=${{ steps.gerrit.outputs.GERRIT_EVENT_TYPE }}" \
-          >> "$GITHUB_ENV"
-        echo "GERRIT_PATCHSET_NUMBER=" \
-          "${{ steps.gerrit.outputs.GERRIT_PATCHSET_NUMBER }}" >> "$GITHUB_ENV"
-        echo "GERRIT_PATCHSET_REVISION=" \
-          "${{ steps.gerrit.outputs.GERRIT_PATCHSET_REVISION }}" \
-          >> "$GITHUB_ENV"
-        echo "GERRIT_PROJECT=${{ steps.gerrit.outputs.GERRIT_PROJECT }}" \
-          >> "$GITHUB_ENV"
-        echo "GERRIT_REFSPEC=${{ steps.gerrit.outputs.GERRIT_REFSPEC }}" \
-          >> "$GITHUB_ENV"
-        echo "GERRIT_HOSTNAME=${{ steps.gerrit.outputs.GERRIT_HOSTNAME }}" \
-          >> "$GITHUB_ENV"

@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2025 The Linux Foundation
 
-# Usage: ./gerrit_query.sh <gerrit_url> <patchset_number> <ssh_user_name>
+# Usage: ./gerrit_query.sh <gerrit_url> <patchset_number> <ssh_user_name> \
+#          [gerrit_server_port]
 
 set -euo pipefail
 
@@ -14,13 +15,16 @@ WORK_DIR="$(pwd)"
 SSH_TIMEOUT=30
 
 if [ "$#" -lt 3 ]; then
-  echo "Error: Usage: $0 <gerrit_url> <patchset_number> <ssh_user_name>" >&2
+  echo "Error: Usage: $0 <gerrit_url> <patchset_number> <ssh_user_name>" \
+    "[gerrit_server_port]" >&2
   exit 1
 fi
 
 gerrit_url="$1"
 cid_patch_set_no="$2"
 ssh_user_name="$3"
+# Gerrit SSH port; defaults to the standard Gerrit port when omitted.
+gerrit_server_port="${4:-29418}"
 
 # Validate inputs
 if [[ -z "$gerrit_url" ]]; then
@@ -36,6 +40,29 @@ fi
 # Validate patchset number if provided
 if [[ -n "$cid_patch_set_no" && ! "$cid_patch_set_no" =~ ^[0-9]+$ ]]; then
   echo "Error: Patchset number must be numeric, got: '$cid_patch_set_no'" >&2
+  exit 1
+fi
+
+# Validate Gerrit URL format
+if [[ ! "$gerrit_url" =~ ^https?://[^/]+/.*c/.*/\+/[0-9]+ ]]; then
+  echo "Error: Invalid Gerrit URL format." \
+    "Expected: https://hostname/gerrit/c/project/+/number" >&2
+  exit 1
+fi
+
+# Restrict the SSH username to a safe character set; it is used verbatim
+# in the SSH connection target. A leading dash is rejected so the value
+# cannot be parsed as an SSH option (option-injection).
+if [[ ! "$ssh_user_name" =~ ^[A-Za-z0-9._][A-Za-z0-9._-]*$ ]]; then
+  echo "Error: Invalid SSH username: '$ssh_user_name'" >&2
+  exit 1
+fi
+
+# Validate the Gerrit SSH port as a numeric TCP port (1-65535).
+if [[ ! "$gerrit_server_port" =~ ^[0-9]+$ ]] \
+    || [ "$gerrit_server_port" -lt 1 ] \
+    || [ "$gerrit_server_port" -gt 65535 ]; then
+  echo "Error: Invalid Gerrit server port: '$gerrit_server_port'" >&2
   exit 1
 fi
 
@@ -55,23 +82,50 @@ gerrit_hostname=$(extract_hostname "$gerrit_url")
 change_number=$(extract_change_number "$gerrit_url")
 project=$(extract_project "$gerrit_url")
 
-# Build SSH command with timeout and better error handling
-ssh_command="timeout $SSH_TIMEOUT ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=yes -p 29418 $ssh_user_name@$gerrit_hostname 'gerrit query --format=JSON project:$project change:$change_number is:open limit:1"
-
-if [ -n "$cid_patch_set_no" ]; then
-    ssh_command="$ssh_command --patch-sets"
-else
-    ssh_command="$ssh_command --current-patch-set"
+# Validate extracted values against safe character sets before they are
+# used to build the (remote) Gerrit query command. This prevents command
+# or query injection via a crafted Gerrit change URL.
+if [[ ! "$change_number" =~ ^[0-9]+$ ]]; then
+  echo "Error: Change number must be numeric, got: '$change_number'" >&2
+  exit 1
 fi
 
-ssh_command="$ssh_command'"
+if [[ ! "$gerrit_hostname" =~ ^[A-Za-z0-9.-]+$ ]]; then
+  echo "Error: Invalid Gerrit hostname: '$gerrit_hostname'" >&2
+  exit 1
+fi
+
+if [[ ! "$project" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+  echo "Error: Invalid Gerrit project: '$project'" >&2
+  exit 1
+fi
+
+# Build the remote Gerrit query command. All interpolated values are
+# validated above, and the command is passed to ssh as a single argument
+# via an argument array (no local 'eval'), eliminating shell injection on
+# the runner.
+remote_query="gerrit query --format=JSON project:$project change:$change_number is:open limit:1"
+
+if [ -n "$cid_patch_set_no" ]; then
+    remote_query="$remote_query --patch-sets"
+else
+    remote_query="$remote_query --current-patch-set"
+fi
+
+ssh_args=(
+    -o ConnectTimeout=10
+    -o StrictHostKeyChecking=yes
+    -p "$gerrit_server_port"
+    --
+    "${ssh_user_name}@${gerrit_hostname}"
+    "$remote_query"
+)
 
 echo "Executing Gerrit query for change $change_number in project $project..." >&2
 
 # Execute SSH command with proper error handling
-if ! json_output=$(eval "$ssh_command" 2>&1); then
+if ! json_output=$(timeout "$SSH_TIMEOUT" ssh "${ssh_args[@]}" 2>&1); then
   echo "Error: SSH connection to Gerrit failed" >&2
-  echo "Command: $ssh_command" >&2
   echo "Output: $json_output" >&2
   exit 1
 fi
