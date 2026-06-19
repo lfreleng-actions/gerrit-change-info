@@ -36,6 +36,8 @@ jobs:
 
       - name: "Checkout repository"
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: "Install test dependencies"
         shell: bash
@@ -136,6 +138,8 @@ jobs:
 
       - name: "Checkout repository"
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: "Test action dependencies"
         shell: bash
@@ -174,12 +178,15 @@ jobs:
 
       - name: "Checkout repository"
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: "Checkout Gerrit Change Info repository"
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: "lfreleng-actions/gerrit-change-info"
           path: "gerrit-change-info"
+          persist-credentials: false
 
       # Disable test to continue on error, until ssh keys are configured
       - name: "Running local action: ${{ github.repository }}"
@@ -276,6 +283,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: Test gerrit-change-info with default path
         id: gerrit-default
@@ -292,10 +301,14 @@ jobs:
 
       - name: Display outputs
         # yamllint disable rule:line-length
+        env:
+          GERRIT_CHANGE_ID: ${{ steps.gerrit-default.outputs.gerrit_change_id }}
+          GERRIT_BRANCH: ${{ steps.gerrit-default.outputs.gerrit_branch }}
+          GERRIT_PROJECT: ${{ steps.gerrit-default.outputs.gerrit_project }}
         run: |
-          echo "Gerrit Change ID: ${{ steps.gerrit-default.outputs.gerrit_change_id }}"
-          echo "Gerrit Branch: ${{ steps.gerrit-default.outputs.gerrit_branch }}"
-          echo "Gerrit Project: ${{ steps.gerrit-default.outputs.gerrit_project }}"
+          echo "Gerrit Change ID: ${GERRIT_CHANGE_ID}"
+          echo "Gerrit Branch: ${GERRIT_BRANCH}"
+          echo "Gerrit Project: ${GERRIT_PROJECT}"
 
   test-custom-path:
     name: Test Custom Path Prefix
@@ -309,6 +322,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: Create test directory
         run: |
@@ -339,10 +354,14 @@ jobs:
 
       - name: Display outputs
         # yamllint disable rule:line-length
+        env:
+          GERRIT_CHANGE_ID: ${{ steps.gerrit-custom.outputs.gerrit_change_id }}
+          GERRIT_BRANCH: ${{ steps.gerrit-custom.outputs.gerrit_branch }}
+          GERRIT_PROJECT: ${{ steps.gerrit-custom.outputs.gerrit_project }}
         run: |
-          echo "Gerrit Change ID: ${{ steps.gerrit-custom.outputs.gerrit_change_id }}"
-          echo "Gerrit Branch: ${{ steps.gerrit-custom.outputs.gerrit_branch }}"
-          echo "Gerrit Project: ${{ steps.gerrit-custom.outputs.gerrit_project }}"
+          echo "Gerrit Change ID: ${GERRIT_CHANGE_ID}"
+          echo "Gerrit Branch: ${GERRIT_BRANCH}"
+          echo "Gerrit Project: ${GERRIT_PROJECT}"
 
   test-error-handling:
     name: Test Error Handling
@@ -357,6 +376,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: Test with non-existent directory (should fail)
         id: gerrit-error
@@ -371,9 +392,10 @@ jobs:
           path_prefix: "non-existent-directory"
 
       - name: Check error handling
-        # yamllint disable rule:line-length
+        env:
+          GERRIT_OUTCOME: ${{ steps.gerrit-error.outcome }}
         run: |
-          if [ "${{ steps.gerrit-error.outcome }}" = "failure" ]; then
+          if [ "${GERRIT_OUTCOME}" = "failure" ]; then
             echo "✓ Error handling working correctly - action failed as expected"
           else
             echo "✗ Error handling issue - action should have failed"
@@ -393,9 +415,10 @@ jobs:
           path_prefix: "../dangerous-path"
 
       - name: Check security validation
-        # yamllint disable rule:line-length
+        env:
+          GERRIT_OUTCOME: ${{ steps.gerrit-dangerous.outcome }}
         run: |
-          if [ "${{ steps.gerrit-dangerous.outcome }}" = "failure" ]; then
+          if [ "${GERRIT_OUTCOME}" = "failure" ]; then
             echo "✓ Security validation working correctly - dangerous path blocked"
           else
             echo "✗ Security issue - dangerous path should have been blocked"
@@ -415,9 +438,10 @@ jobs:
           path_prefix: "/etc/passwd"
 
       - name: Check absolute path validation
-        # yamllint disable rule:line-length
+        env:
+          GERRIT_OUTCOME: ${{ steps.gerrit-absolute.outcome }}
         run: |
-          if [ "${{ steps.gerrit-absolute.outcome }}" = "failure" ]; then
+          if [ "${GERRIT_OUTCOME}" = "failure" ]; then
             echo "✓ Absolute path validation working correctly - absolute path blocked"
           else
             echo "✗ Security issue - absolute path should have been blocked"
