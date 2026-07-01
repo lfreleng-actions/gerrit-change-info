@@ -18,6 +18,10 @@ on:
       - '!.*'
       - '!tox.ini'
 
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
 permissions: {}
 
 jobs:
@@ -143,16 +147,20 @@ jobs:
 
       - name: "Test action dependencies"
         shell: bash
+        env:
+          MATRIX_OS: ${{ matrix.os }}
         run: |
-          echo "Testing on ${{ matrix.os }}..."
+          echo "Testing on ${MATRIX_OS}..."
 
           # Check required tools
           echo "Checking dependencies..."
           which ssh || (echo "SSH not available" && exit 1)
-          which jq || sudo apt-get update && sudo apt-get install -y jq
+          command -v jq >/dev/null || {
+            sudo apt-get update && sudo apt-get install -y jq
+          }
           which timeout || (echo "timeout not available" && exit 1)
 
-          echo "✓ Dependencies check passed on ${{ matrix.os }}"
+          echo "✓ Dependencies check passed on ${MATRIX_OS}"
 
       - name: "Test action input validation"
         uses: ./
@@ -167,6 +175,8 @@ jobs:
   tests:
     name: "Test local GitHub Action"
     runs-on: ubuntu-latest
+    # Dedicated environment scopes access to the Gerrit test secrets
+    environment: 'development'
     permissions:
       contents: read
     timeout-minutes: 5
@@ -201,9 +211,11 @@ jobs:
 
       - name: "Validating local action: ${{ github.repository }}"
         shell: bash
+        env:
+          REPO: ${{ github.repository }}
         run: |
           # Local action validation
-          echo "Validating local action: ${{ github.repository }}"
+          echo "Validating local action: ${REPO}"
           echo "Validation step summary output" >> "$GITHUB_STEP_SUMMARY"
 
       - name: "Test: Missing SSH Key"
@@ -274,6 +286,8 @@ jobs:
   test-default-path:
     name: Test Default Path Prefix
     runs-on: ubuntu-latest
+    # Dedicated environment scopes access to the Gerrit test secrets
+    environment: 'development'
     timeout-minutes: 10
     steps:
       # yamllint disable-line rule:line-length
@@ -313,6 +327,8 @@ jobs:
   test-custom-path:
     name: Test Custom Path Prefix
     runs-on: ubuntu-latest
+    # Dedicated environment scopes access to the Gerrit test secrets
+    environment: 'development'
     timeout-minutes: 10
     steps:
       # yamllint disable-line rule:line-length
@@ -366,6 +382,8 @@ jobs:
   test-error-handling:
     name: Test Error Handling
     runs-on: ubuntu-latest
+    # Dedicated environment scopes access to the Gerrit test secrets
+    environment: 'development'
     timeout-minutes: 10
     continue-on-error: true
     steps:
