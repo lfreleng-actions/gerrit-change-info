@@ -181,13 +181,6 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: "Checkout Gerrit Change Info repository"
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: "lfreleng-actions/gerrit-change-info"
-          path: "gerrit-change-info"
-          persist-credentials: false
-
       # Disable test to continue on error, until ssh keys are configured
       - name: "Running local action: ${{ github.repository }}"
         uses: $/
