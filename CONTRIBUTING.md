@@ -33,7 +33,7 @@ contributors.
    # Install pre-commit hooks
    pip install pre-commit
    <!-- write-good-disable no-repeat -->
-   pre-commit install -t commit-msg
+   pre-commit install
    <!-- write-good-enable no-repeat -->
 
    # Install required tools (if not already available)
