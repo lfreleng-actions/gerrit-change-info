@@ -314,11 +314,23 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: Create test directory
+      # Stands in for an absent secret; it authorises nothing, but gets the
+      # action past key validation to the steps that run in path_prefix.
+      - name: Generate disposable SSH key
+        id: disposable-key
         run: |
-          mkdir -p test-directory
-          echo "Created test directory for path_prefix testing"
+          ssh-keygen -q -t ed25519 -N "" -C "" -f "${RUNNER_TEMP}/disposable_key"
+          while IFS= read -r line; do
+            echo "::add-mask::${line}"
+          done < "${RUNNER_TEMP}/disposable_key"
+          {
+            echo "private_key<<EOF"
+            cat "${RUNNER_TEMP}/disposable_key"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
+      # The action checks out this repository itself, emptying the
+      # workspace first, so an existing path_prefix must be a tracked one.
       - name: Test gerrit-change-info with custom path
         id: gerrit-custom
         uses: $/
@@ -327,19 +339,47 @@ jobs:
           gerrit_patchset_number: "6"
           ssh_user_name: ${{ vars.GERRIT_SSH_USER || 'test-user' }}
           gerrit_known_hosts: ${{ vars.GERRIT_KNOWN_HOSTS || 'test-host' }}
-          ssh_private_key: ${{ secrets.GERRIT_SSH_PRIVKEY || 'test-key' }}
-          path_prefix: "test-directory"
+          # yamllint disable-line rule:line-length
+          ssh_private_key: ${{ secrets.GERRIT_SSH_PRIVKEY || steps.disposable-key.outputs.private_key }}
+          path_prefix: "docs"
         continue-on-error: true
 
       - name: Verify output files created in correct location
+        env:
+          GERRIT_OUTCOME: ${{ steps.gerrit-custom.outcome }}
+          GERRIT_CHANGE_NUMBER: ${{ steps.gerrit-custom.outputs.gerrit_change_number }}
+          # yamllint disable-line rule:line-length
+          HAVE_CREDENTIALS: ${{ secrets.GERRIT_SSH_PRIVKEY != '' && vars.GERRIT_SSH_USER != '' && vars.GERRIT_KNOWN_HOSTS != '' }}
         run: |
-          if ls test-directory/*.file >/dev/null 2>&1; then
-            echo "✓ Output file found in test-directory"
-            ls -la test-directory/
-          else
-            echo "✗ Output file not found in expected location"
-            ls -la test-directory/ || echo "Directory empty or doesn't exist"
+          # A tracked file shows docs came from the checkout, not from the
+          # action creating a missing directory.
+          if [[ ! -f docs/path-prefix.md ]]; then
+            echo "✗ path_prefix did not name an existing directory"
+            exit 1
           fi
+          echo "✓ path_prefix named an existing directory"
+
+          # Written by the first step that runs inside path_prefix
+          if [[ ! -f docs/gerrit_ssh_info.env ]]; then
+            echo "✗ Action did not run inside docs"
+            exit 1
+          fi
+          echo "✓ Action ran inside docs"
+
+          if [[ "${HAVE_CREDENTIALS}" != "true" ]]; then
+            echo "Gerrit credentials unavailable; outcome not asserted"
+            exit 0
+          fi
+
+          if [[ "${GERRIT_OUTCOME}" != "success" ]]; then
+            echo "✗ Action failed with an existing path_prefix directory"
+            exit 1
+          fi
+          if [[ ! -f "docs/${GERRIT_CHANGE_NUMBER}.file" ]]; then
+            echo "✗ Output file not found in docs"
+            exit 1
+          fi
+          echo "✓ Output file found in docs"
 
       - name: Display outputs
         # yamllint disable rule:line-length
