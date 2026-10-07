@@ -133,7 +133,7 @@ The action supports a `path_prefix` parameter for execution in different context
 
 The action automatically:
 
-- Validates the specified path exists and is accessible
+- Validates the specified path and creates the directory if missing
 - Changes to the target directory before executing scripts
 - Creates output files in the correct location
 - Prevents directory traversal attacks (blocks paths containing `..`)
@@ -158,16 +158,6 @@ The action automatically:
 ### Common Issues
 
 #### Path Prefix Errors
-
-```text
-Error: path_prefix directory does not exist: my-directory
-```
-
-- **Cause**: The specified `path_prefix` directory doesn't exist in the repository
-- **Solution**:
-  - Ensure the directory exists in your repository
-  - Check spelling and case sensitivity
-  - Use relative paths from repository root
 
 ```text
 Error: path_prefix cannot contain '..' (parent directory references)
