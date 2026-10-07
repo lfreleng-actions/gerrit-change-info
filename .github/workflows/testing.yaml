@@ -352,6 +352,55 @@ jobs:
           echo "Gerrit Branch: ${GERRIT_BRANCH}"
           echo "Gerrit Project: ${GERRIT_PROJECT}"
 
+  test-missing-path:
+    name: Test Missing Path Prefix
+    runs-on: ubuntu-latest
+    # Dedicated environment scopes access to the Gerrit test secrets
+    environment: 'development'
+    timeout-minutes: 10
+    steps:
+      # yamllint disable-line rule:line-length
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Test gerrit-change-info with missing path
+        id: gerrit-missing
+        uses: $/
+        continue-on-error: true
+        with:
+          gerrit_change_url: "https://git.opendaylight.org/gerrit/c/releng/builder/+/111445"
+          gerrit_patchset_number: "6"
+          ssh_user_name: ${{ vars.GERRIT_SSH_USER || 'test-user' }}
+          gerrit_known_hosts: ${{ vars.GERRIT_KNOWN_HOSTS || 'test-host' }}
+          ssh_private_key: ${{ secrets.GERRIT_SSH_PRIVKEY || 'test-key' }}
+          path_prefix: "missing-directory/nested"
+
+      # Without credentials the action fails at SSH key validation, after
+      # it has created the directory, so only the directory is asserted.
+      - name: Verify missing directory was created
+        env:
+          GERRIT_OUTCOME: ${{ steps.gerrit-missing.outcome }}
+          # yamllint disable-line rule:line-length
+          HAVE_CREDENTIALS: ${{ secrets.GERRIT_SSH_PRIVKEY != '' && vars.GERRIT_SSH_USER != '' && vars.GERRIT_KNOWN_HOSTS != '' }}
+        run: |
+          if [[ ! -d missing-directory/nested ]]; then
+            echo "✗ Missing path_prefix directory was not created"
+            exit 1
+          fi
+          echo "✓ Missing path_prefix directory was created"
+
+          if [[ "${HAVE_CREDENTIALS}" != "true" ]]; then
+            echo "Gerrit credentials unavailable; outcome not asserted"
+            exit 0
+          fi
+
+          if [[ "${GERRIT_OUTCOME}" != "success" ]]; then
+            echo "✗ Action failed with a missing path_prefix directory"
+            exit 1
+          fi
+          echo "✓ Action succeeded with a missing path_prefix directory"
+
   test-error-handling:
     name: Test Error Handling
     runs-on: ubuntu-latest
@@ -364,29 +413,6 @@ jobs:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
-
-      - name: Test with non-existent directory (should fail)
-        id: gerrit-error
-        uses: $/
-        continue-on-error: true
-        with:
-          gerrit_change_url: "https://git.opendaylight.org/gerrit/c/releng/builder/+/111445"
-          gerrit_patchset_number: "6"
-          ssh_user_name: ${{ vars.GERRIT_SSH_USER || 'test-user' }}
-          gerrit_known_hosts: ${{ vars.GERRIT_KNOWN_HOSTS || 'test-host' }}
-          ssh_private_key: ${{ secrets.GERRIT_SSH_PRIVKEY || 'test-key' }}
-          path_prefix: "non-existent-directory"
-
-      - name: Check error handling
-        env:
-          GERRIT_OUTCOME: ${{ steps.gerrit-error.outcome }}
-        run: |
-          if [ "${GERRIT_OUTCOME}" = "failure" ]; then
-            echo "✓ Error handling working correctly - action failed as expected"
-          else
-            echo "✗ Error handling issue - action should have failed"
-            exit 1
-          fi
 
       - name: Test with dangerous path (should fail)
         id: gerrit-dangerous
