@@ -407,7 +407,6 @@ jobs:
     # Dedicated environment scopes access to the Gerrit test secrets
     environment: 'development'
     timeout-minutes: 10
-    continue-on-error: true
     steps:
       # yamllint disable-line rule:line-length
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -430,6 +429,12 @@ jobs:
         env:
           GERRIT_OUTCOME: ${{ steps.gerrit-dangerous.outcome }}
         run: |
+          # The action creates an accepted path_prefix before any later step
+          # can fail, so its absence shows that path validation rejected it.
+          if [ -e ../dangerous-path ]; then
+            echo "✗ Security issue - dangerous path was accepted and created"
+            exit 1
+          fi
           if [ "${GERRIT_OUTCOME}" = "failure" ]; then
             echo "✓ Security validation working correctly - dangerous path blocked"
           else
@@ -447,12 +452,18 @@ jobs:
           ssh_user_name: ${{ vars.GERRIT_SSH_USER || 'test-user' }}
           gerrit_known_hosts: ${{ vars.GERRIT_KNOWN_HOSTS || 'test-host' }}
           ssh_private_key: ${{ secrets.GERRIT_SSH_PRIVKEY || 'test-key' }}
-          path_prefix: "/etc/passwd"
+          # Must be creatable: mkdir fails on an existing file such as
+          # /etc/passwd even when validation lets the path through.
+          path_prefix: "${{ runner.temp }}/absolute-path"
 
       - name: Check absolute path validation
         env:
           GERRIT_OUTCOME: ${{ steps.gerrit-absolute.outcome }}
         run: |
+          if [ -e "${RUNNER_TEMP}/absolute-path" ]; then
+            echo "✗ Security issue - absolute path was accepted and created"
+            exit 1
+          fi
           if [ "${GERRIT_OUTCOME}" = "failure" ]; then
             echo "✓ Absolute path validation working correctly - absolute path blocked"
           else
