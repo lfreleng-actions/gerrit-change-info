@@ -15,6 +15,10 @@ on:
     paths:
       - '**'
       - '!.github/**'
+      # The action's implementation and its tests live under .github,
+      # so re-include them; otherwise script changes bypass testing.
+      - '.github/scripts/**'
+      - '.github/workflows/testing.yaml'
       - '!.*'
       - '!tox.ini'
 
