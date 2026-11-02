@@ -15,6 +15,10 @@ on:
     paths:
       - '**'
       - '!.github/**'
+      # The action's implementation and its tests live under .github,
+      # so re-include them; otherwise script changes bypass testing.
+      - '.github/scripts/**'
+      - '.github/workflows/testing.yaml'
       - '!.*'
       - '!tox.ini'
 
@@ -123,6 +127,43 @@ jobs:
           else
             echo "✓ Missing arguments properly rejected"
           fi
+
+      - name: "Test Gerrit query tolerates ssh stderr diagnostics"
+        shell: bash
+        run: |
+          # OpenSSH 10 prints a post-quantum key exchange warning to
+          # stderr; it must not corrupt the JSON payload on stdout.
+          script_path="$PWD/.github/scripts/gerrit_query.sh"
+          workdir="$(mktemp -d)"
+          mkdir -p "$workdir/bin"
+
+          cat > "$workdir/bin/ssh" <<'STUB'
+          #!/bin/bash
+          echo "** WARNING: connection is not using a post-quantum" \
+            "key exchange algorithm." >&2
+          echo "** See https://openssh.com/pq.html" >&2
+          cat <<'JSON'
+          {"project":"gnmi","branch":"master","id":"I71c056e5",
+           "url":"https://git.opendaylight.org/gerrit/c/gnmi/+/127324",
+           "patchSets":[{"number":1,"revision":"ca4b4bd2",
+                         "ref":"refs/changes/24/127324/1"}]}
+          {"type":"stats","rowCount":1,"moreChanges":false}
+          JSON
+          STUB
+          chmod +x "$workdir/bin/ssh"
+
+          (
+            cd "$workdir"
+            PATH="$workdir/bin:$PATH" "$script_path" \
+              "https://git.opendaylight.org/gerrit/c/gnmi/+/127324" \
+              "1" "gh2gerrit" "29418"
+          )
+
+          grep -q '^GERRIT_BRANCH=master$' "$workdir/127324.file"
+          grep -q '^GERRIT_PATCHSET_REVISION=ca4b4bd2$' \
+            "$workdir/127324.file"
+          echo "✓ ssh stderr does not corrupt the JSON response"
+          rm -rf "$workdir"
 
   ### Matrix Tests Across Different Environments ###
   matrix-tests:

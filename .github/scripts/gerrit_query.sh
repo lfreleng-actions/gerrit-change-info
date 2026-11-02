@@ -123,11 +123,23 @@ ssh_args=(
 
 echo "Executing Gerrit query for change $change_number in project $project..." >&2
 
-# Execute SSH command with proper error handling
-if ! json_output=$(timeout "$SSH_TIMEOUT" ssh "${ssh_args[@]}" 2>&1); then
+# Execute SSH command with proper error handling. Keep stderr out of the
+# captured output: ssh writes diagnostics there (for example the OpenSSH 10
+# "connection is not using a post-quantum key exchange algorithm" warning),
+# which would corrupt the JSON document on stdout.
+ssh_stderr=$(mktemp)
+trap 'rm -f "$ssh_stderr"' EXIT
+
+if ! json_output=$(timeout "$SSH_TIMEOUT" ssh "${ssh_args[@]}" 2>"$ssh_stderr"); then
   echo "Error: SSH connection to Gerrit failed" >&2
-  echo "Output: $json_output" >&2
+  echo "Output: $(cat "$ssh_stderr")" >&2
   exit 1
+fi
+
+# Surface any ssh diagnostics without mixing them into the parsed payload.
+if [ -s "$ssh_stderr" ]; then
+  echo "SSH diagnostics:" >&2
+  cat "$ssh_stderr" >&2
 fi
 
 if [[ -z "$json_output" ]]; then
