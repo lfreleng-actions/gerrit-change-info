@@ -34,6 +34,12 @@ inputs:
     description: 'Directory path prefix for executing the action'
     required: false
     default: "."
+  apt_http_fallback_override:
+    description: >-
+      Emergency HTTP fallback for APT, passed to apt-https-enforce-action.
+      Set this input from APT_HTTP_FALLBACK in the calling workflow.
+    required: false
+    default: ''
 
 outputs:
   gerrit_branch:
@@ -104,9 +110,26 @@ runs:
 
         echo "Path prefix validation and setup completed: $PATH_PREFIX" >&2
 
-    - name: Install jq
+    - name: Check whether jq needs installation
+      id: jq
+      if: runner.os == 'Linux'
       shell: bash
-      run: sudo apt-get update && sudo apt-get install -y jq
+      run: |
+        if ! command -v jq >/dev/null; then
+          echo 'install_needed=true' >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Enforce HTTPS for APT
+      if: runner.os == 'Linux' && steps.jq.outputs.install_needed == 'true'
+      # yamllint disable-line rule:line-length
+      uses: lfreleng-actions/apt-https-enforce-action@107838afeb79d37aeddb2b7f227f80f51df25180  # v0.0.1
+      with:
+        http_fallback_override: ${{ inputs.apt_http_fallback_override }}
+
+    - name: Install jq
+      if: runner.os == 'Linux' && steps.jq.outputs.install_needed == 'true'
+      shell: bash
+      run: sudo apt-get install -y jq
 
     - name: Validate inputs
       shell: bash

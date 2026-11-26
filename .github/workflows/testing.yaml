@@ -47,11 +47,51 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: "Enforce HTTPS for APT"
+        id: apt-https
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/apt-https-enforce-action@107838afeb79d37aeddb2b7f227f80f51df25180  # v0.0.1
+        with:
+          http_fallback_override: ${{ vars.APT_HTTP_FALLBACK }}
+
       - name: "Install test dependencies"
         shell: bash
+        run: sudo apt-get install -y shellcheck jq
+
+      - &verify-apt-https
+        name: "Verify APT used HTTPS"
+        shell: bash
+        env:
+          APT_TRANSPORT: ${{ steps.apt-https.outputs.transport }}
+          APT_FALLBACK_ENABLED: ${{ steps.apt-https.outputs.fallback_enabled }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y shellcheck jq
+          echo "transport=${APT_TRANSPORT}"
+          echo "fallback_enabled=${APT_FALLBACK_ENABLED}"
+
+          [[ "${APT_TRANSPORT}" == "https" ]]
+          [[ "${APT_FALLBACK_ENABLED}" == "false" ]]
+
+          source_files=(
+            /etc/apt/sources.list
+            /etc/apt/sources.list.d/*.list
+            /etc/apt/sources.list.d/*.sources
+          )
+          for source_file in "${source_files[@]}"; do
+            [[ -f "${source_file}" ]] || continue
+            http_sources="$(awk '
+              {
+                sub(/#.*/, "")
+                if (tolower($0) ~ /http:\/\//) {
+                  print FILENAME ":" FNR ": " $0
+                }
+              }
+            ' "${source_file}")"
+            if [[ -n "${http_sources}" ]]; then
+              printf '%s\n' "${http_sources}" >&2
+              echo "Found an HTTP APT source." >&2
+              exit 1
+            fi
+          done
 
       - name: "Run shellcheck on scripts"
         shell: bash
@@ -181,6 +221,13 @@ jobs:
         with:
           egress-policy: audit
 
+      - name: "Enforce HTTPS for APT"
+        id: apt-https
+        # yamllint disable-line rule:line-length
+        uses: lfreleng-actions/apt-https-enforce-action@107838afeb79d37aeddb2b7f227f80f51df25180  # v0.0.1
+        with:
+          http_fallback_override: ${{ vars.APT_HTTP_FALLBACK }}
+
       - name: "Test action dependencies"
         shell: bash
         env:
@@ -191,14 +238,57 @@ jobs:
           # Check required tools
           echo "Checking dependencies..."
           which ssh || (echo "SSH not available" && exit 1)
-          command -v jq >/dev/null || {
-            sudo apt-get update && sudo apt-get install -y jq
-          }
+          command -v jq >/dev/null || sudo apt-get install -y jq
           which timeout || (echo "timeout not available" && exit 1)
 
           echo "✓ Dependencies check passed on ${MATRIX_OS}"
 
-      - name: "Test action input validation"
+      - *verify-apt-https
+
+      - name: "Prepare to test the composite without jq"
+        shell: bash
+        run: |
+          # Record refreshes even on images that already use HTTPS. Block
+          # cleartext downloads so the test cannot pass by falling back.
+          sudo tee /etc/apt/apt.conf.d/99-composite-test >/dev/null <<'EOF'
+          Acquire::http::Proxy "http://127.0.0.1:9/";
+          Acquire::https::Proxy "DIRECT";
+          APT::Update::Pre-Invoke {
+            "echo update >> /var/log/composite-apt-update";
+          };
+          EOF
+          sudo dpkg --remove jq
+          if command -v jq; then
+            echo "jq is still available after removing its package." >&2
+            exit 1
+          fi
+
+      # Use an empty Gerrit URL so none of these calls needs SSH credentials
+      # or contacts Gerrit. The checks below assert the APT side effects.
+      - name: "Pass an invalid APT fallback override with jq missing"
+        id: invalid-fallback
+        uses: $/
+        with:
+          gerrit_change_url: ""
+          ssh_user_name: "test"
+          ssh_private_key: "fake"
+          gerrit_known_hosts: "fake"
+          apt_http_fallback_override: "invalid"
+        continue-on-error: true
+
+      - name: "Verify the override was rejected before APT ran"
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.invalid-fallback.outcome }}
+        run: |
+          [[ "$OUTCOME" == "failure" ]]
+          [[ ! -e /var/log/composite-apt-update ]]
+          if command -v jq; then
+            echo "The invalid override did not prevent installation." >&2
+            exit 1
+          fi
+
+      - name: "Run the composite with jq missing"
         uses: $/
         with:
           gerrit_change_url: ""
@@ -206,6 +296,30 @@ jobs:
           ssh_private_key: "fake"
           gerrit_known_hosts: "fake"
         continue-on-error: true
+
+      - name: "Verify the composite refreshed APT and installed jq"
+        shell: bash
+        run: |
+          [[ "$(cat /var/log/composite-apt-update)" == "update" ]]
+          jq --version
+          sudo cp -a /etc/apt "$RUNNER_TEMP/apt-before"
+
+      - name: "Test action input validation with jq present"
+        uses: $/
+        with:
+          gerrit_change_url: ""
+          ssh_user_name: "test"
+          ssh_private_key: "fake"
+          gerrit_known_hosts: "fake"
+          path_prefix: "jq-present"
+        continue-on-error: true
+
+      - name: "Verify the composite left APT alone with jq present"
+        shell: bash
+        run: |
+          [[ -d jq-present ]]
+          [[ "$(cat /var/log/composite-apt-update)" == "update" ]]
+          sudo diff -qr "$RUNNER_TEMP/apt-before" /etc/apt
 
   ### Integration Tests ###
   tests:
