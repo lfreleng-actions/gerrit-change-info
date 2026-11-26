@@ -27,6 +27,7 @@ steps:
       GERRIT_SSH_USER: ${{ vars.GERRIT_SSH_USER }}
       GERRIT_PATCHSET_NUMBER: ${{ inputs.GERRIT_PATCHSET_NUMBER }}
       path_prefix: "." # Optional: directory to execute the action in
+      apt_http_fallback_override: ${{ vars.APT_HTTP_FALLBACK }}
     secrets:
       GERRIT_SSH_PRIVKEY: ${{ secrets.GERRIT_SSH_PRIVKEY }}
 
@@ -72,13 +73,14 @@ steps:
 
 <!-- markdownlint-disable MD013 -->
 
-| Variable Name          | Required | Description                                                   |
-| ---------------------- | -------- | ------------------------------------------------------------- |
-| GERRIT_CHANGE_URL      | Yes      | Gerrit change-request URL                                     |
-| GERRIT_SSH_USER        | Yes      | SSH User name                                                 |
-| GERRIT_PATCHSET_NUMBER | False    | Gerrit patchset number                                        |
-| GERRIT_SSH_PRIVKEY     | False    | Gerrit SSH user private key                                   |
-| path_prefix            | False    | Directory path prefix for executing the action (default: ".") |
+| Variable Name              | Required | Description                                                   |
+| -------------------------- | -------- | ------------------------------------------------------------- |
+| GERRIT_CHANGE_URL          | Yes      | Gerrit change-request URL                                     |
+| GERRIT_SSH_USER            | Yes      | SSH User name                                                 |
+| GERRIT_PATCHSET_NUMBER     | False    | Gerrit patchset number                                        |
+| GERRIT_SSH_PRIVKEY         | False    | Gerrit SSH user private key                                   |
+| path_prefix                | False    | Directory path prefix for executing the action (default: ".") |
+| apt_http_fallback_override | False    | Emergency HTTP fallback for APT (default: empty).             |
 
 <!-- markdownlint-enable MD013 -->
 
@@ -121,6 +123,15 @@ GERRIT_HOSTNAME="git.opendaylight.org"
 Using an SSH connection to the Gerrit server, the gerrit-query CLI command
 obtains and validates parameters required by downstream reusable
 workflows.
+
+On Linux, if `jq` is missing, the action switches the runner's APT sources
+to HTTPS for the rest of the caller's job before installing `jq`. If `jq`
+is already available or the runner is not Linux, the action leaves APT
+sources unchanged.
+
+To allow HTTP if the HTTPS refresh fails, set `apt_http_fallback_override`
+to `${{ vars.APT_HTTP_FALLBACK }}` in the calling workflow, as in the basic
+usage example.
 
 ### Path Prefix Support
 
